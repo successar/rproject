@@ -1,0 +1,76 @@
+---
+title: "project"
+author: "SARTHAK JAIN"
+date: "March 24, 2018"
+output: html_document
+---
+
+
+```{r}
+library(insuranceData)
+data(dataCar)
+library(dplyr)
+
+dataCar <- dataCar %>% filter(claimcst0 > 0.0)
+```
+
+```{r}
+summary(dataCar)
+m1 <- lm(log(claimcst0) ~ veh_value + veh_body + veh_age + gender + area + agecat, data=dataCar)
+summary(m1)
+```
+
+
+```{r}
+n <- 100000
+veh_value <- runif(n, 10, 100)
+gender <- rbinom(n, 1, .5)
+veh_age <- runif(n, 0, 30)
+age_cat <- runif(n, 25, 55)
+
+b0 <- 10
+b1 <- 5
+b2 <- 3.5
+b3 <- 2
+b4 <- 0.1
+
+e <- rnorm(n, mean=0, sd=10.)
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + e
+
+df <- data.frame(y, veh_value, gender, veh_age, age_cat)
+```
+
+
+
+```{r}
+model <- lm(y ~ veh_value + gender + veh_age + age_cat, df)
+summary(model)
+plot(model)
+```
+
+```{r}
+cond <- (df$veh_age > df$age_cat - 27) & (df$veh_age < df$age_cat - 23)
+df_filt <- df[cond, ]
+model <- lm(y ~ veh_value + gender + veh_age + age_cat, df_filt)
+summary(model)
+plot(model)
+library(car)
+vif(model)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
