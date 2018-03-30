@@ -38,6 +38,7 @@ e <- rnorm(n, mean=0, sd=10.)
 y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + e
 
 df <- data.frame(y, veh_value, gender, veh_age, age_cat)
+#add aread and change age to categorical
 ```
 
 
