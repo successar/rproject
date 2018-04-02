@@ -23,10 +23,11 @@ summary(m1)
 
 ```{r}
 n <- 100000
-veh_value <- runif(n, 10, 100)
+veh_value <- sample(10:100, n, replace=T)
 gender <- rbinom(n, 1, .5)
-veh_age <- runif(n, 0, 30)
-age_cat <- runif(n, 25, 55)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
 
 b0 <- 10
 b1 <- 5
@@ -34,32 +35,38 @@ b2 <- 3.5
 b3 <- 2
 b4 <- 0.1
 
-e <- rnorm(n, mean=0, sd=10.)
-y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + e
+bArea0 <- 1
+bArea1 <- 2
+bArea2 <- 3
 
-df <- data.frame(y, veh_value, gender, veh_age, age_cat)
+e <- rnorm(n, mean=0, sd=10.)
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
+df[, 'area'] <-  as.factor(df[, 'area'])
+df[, 'gender'] <- as.factor(df[, 'gender'])
 ```
 
 
-
+Standard Model
+==============
 ```{r}
-model <- lm(y ~ veh_value + gender + veh_age + age_cat, df)
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=df)
 summary(model)
 plot(model)
 ```
 
+Correlated Predictors
+=====================
 ```{r}
 cond <- (df$veh_age > df$age_cat - 27) & (df$veh_age < df$age_cat - 23)
 df_filt <- df[cond, ]
-model <- lm(y ~ veh_value + gender + veh_age + age_cat, df_filt)
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, df_filt)
 summary(model)
 plot(model)
 library(car)
 vif(model)
 ```
-
-
-
 
 
 
