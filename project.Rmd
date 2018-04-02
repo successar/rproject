@@ -45,6 +45,8 @@ y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area ==
 df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
 df[, 'area'] <-  as.factor(df[, 'area'])
 df[, 'gender'] <- as.factor(df[, 'gender'])
+
+#add area as categorical and keep age as numeric
 ```
 
 
