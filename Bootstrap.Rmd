@@ -1,0 +1,122 @@
+---
+title: "Bootstrapping"
+author: "Shantam Gupta"
+date: "April 5, 2018"
+output: pdf_document
+---
+
+
+```{r}
+library(pander)
+library(insuranceData)
+data(dataCar)
+library(dplyr)
+
+dataCar <- dataCar %>% filter(claimcst0 > 0.0)
+```
+
+
+```{r}
+summary(dataCar)
+m1 <- lm(log(claimcst0) ~ veh_value + veh_body + veh_age + gender + area + agecat, data=dataCar)
+summary(m1)
+```
+
+
+
+```{r}
+n <- 100000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 10
+b1 <- 5
+b2 <- 3.5
+b3 <- 2
+b4 <- 0.1
+
+bArea0 <- 1
+bArea1 <- 2
+bArea2 <- 3
+
+e <- rnorm(n, mean=0, sd=10.)
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
+df[, 'area'] <-  as.factor(df[, 'area'])
+df[, 'gender'] <- as.factor(df[, 'gender'])
+
+#add area as categorical and keep age as numeric
+```
+
+
+
+Standard Model
+==============
+#checking  the structure of the data
+```{r}
+str(df)
+```
+
+
+#checking  the summary of the data
+```{r}
+summary(df)
+```
+
+
+```{r}
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=df)
+summary(model)
+plot(model)
+```
+```{r}
+sum <- summary(model)
+name <- row.names(sum$coefficients)
+name
+```
+
+# Effect of missing rows on Model Quality
+
+In this study we shall randomly remove without replacement `r seq(1,100,10) %`  of the rows from the data and
+observe the effect on p-values of the coefficients and adjusted $R^2$ 
+```{r}
+#remove x% of rows from the model
+p_value <- data.frame()
+adj_r2 <- c()
+for (i in seq(1,100,10)){
+model_rows_removed <- df[sample(nrow(df), size = (nrow(df)*(i/100)), replace = F),]
+print(nrow(model_rows_removed))
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=model_rows_removed)
+sum <- summary(model)
+p_value <- rbind(p_value,sum$coefficients[,4])
+adj_r2 <- append(adj_r2,sum$adj.r.squared)
+#print(c(sum$adj.r.squared))
+}
+names(p_value)<- name
+```
+
+```{r}
+plot(seq(10,100,10), adj_r2,type = "o", col = "blue") 
+title("Adjusted R2 vs % of rows of randomly sampled data")
+```
+### P Values of coefficients after random sampling without replacecment
+```{r}
+pander(p_value)
+```
+
+```{r, warning=F, message= FALSE}
+library(reshape2)
+d <- melt(p_value[])
+ggplot(d,aes(x = variable, y = value)) + 
+    facet_wrap(~variable,scales = "free_x") + 
+    geom_point()
+```
+
+
+
+
+
