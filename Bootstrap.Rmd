@@ -252,9 +252,10 @@ plot(model)
 ```
 
 ## Weighted Regression to deal with non constant variance of errors
+
 ```{r}
 #estimating the weights
-w <- predict(lm(abs(model$residuals) ~ df$veh_value + df$veh_age + df$age_cat + df$area + df$gender))
+w <- predict(lm(abs(model$residuals) ~ veh_value + gender + veh_age + age_cat+ 1*(area==0) + 1*(area==1) + 1*(area==2) ))
 
 # fitting the weighted regression model
 model_weight <- lm(y~., df, weights = 1/(w^2))
