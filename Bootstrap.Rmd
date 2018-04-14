@@ -8,6 +8,7 @@ output: pdf_document
 
 ```{r}
 library(pander)
+library(ggplot2)
 library(insuranceData)
 data(dataCar)
 library(dplyr)
@@ -112,11 +113,154 @@ pander(p_value)
 library(reshape2)
 d <- melt(p_value[])
 ggplot(d,aes(x = variable, y = value)) + 
-    facet_wrap(~variable,scales = "free_x") + 
     geom_point()
 ```
 
 
 
+# Effect of missing columns on Model Quality
 
+In this study we shall randomly remove one column at a time from the data and
+observe the effect on p-values of the coefficients and adjusted $R^2$ 
+
+```{r}
+#remove x% of rows from the model
+col_p_value <- data.frame()
+col_adj_r2 <- c()
+for (i in 2:ncol(df)){
+model_col_removed <- df[,-c(i)]
+model <- lm(y ~ ., data=model_col_removed)
+sum <- summary(model)
+assign(paste("col_p_value",i,sep= "_"),sum$coefficients[,4])
+col_adj_r2 <- append(col_adj_r2,sum$adj.r.squared)
+#print(c(sum$adj.r.squared))
+}
+```
+
+```{r}
+plot(col_adj_r2, xaxt = "n")
+axis(1, at=1:5, labels=names(df[,2:6]))
+title("Effect of removing a predictor from data")
+```
+
+
+
+# Effect of Systematic Errors on Model Quality/Fit
+
+# Simulating the data to test the effect
+```{r}
+set.seed(121)
+n <- 100000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 5
+b1 <- 2
+b2 <- 6
+b3 <- 7
+b4 <- 9
+
+bArea0 <- 300
+bArea1 <- 220
+bArea2 <- 315
+
+e <- rnorm(n, mean=0, sd=10.)
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+df_age <- data.frame(veh_value,veh_age, age_cat)
+#df_age <- as.data.frame(scale(df_age))
+df_age['y'] <- y  
+df_age['area'] <-  area
+df_age$area <- as.factor(df_age$area)
+df_age['gender'] <- gender
+df_age$gender <- as.factor(df_age$gender)
+head(df_age)
+```
+Taking each coefficient to be equal in the above simulated data.
+
+### Linear Model using simulated data
+```{r}
+model <- lm(y ~ ., data=df_age)
+summary(model)
+```
+
+
+## Removing Age Category < 40 
+
+### Distribution of Age Category
+```{r}
+df_age %>%
+  ggplot(aes(gender,age_cat)) + geom_boxplot()
+```
+
+
+```{r}
+df_age_2 <- df_age[df_age$age_cat > 35 & df_age$age_cat< 45,] # selecting rows
+model <- lm(y ~ ., data=df_age_2)
+summary(model)
+```
+
+
+## effect of non constant variance
+
+Simulating data with non constant variance
+```{r}
+set.seed(121)
+n <- 100000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 5
+b1 <- 2
+b2 <- 6
+b3 <- 7
+b4 <- 9
+
+bArea0 <- 300
+bArea1 <- 220
+bArea2 <- 315
+
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2)
+
+e <- c()
+for(i in 1:n){
+e <- append(e, rnorm(1, mean=0, sd= y[i]))
+}
+
+Y <- y + e
+
+df <- data.frame(veh_value,veh_age, age_cat)
+#df_age <- as.data.frame(scale(df_age))
+df['y'] <- Y  
+df['area'] <-  area
+df$area <- as.factor(df$area)
+df['gender'] <- gender
+df$gender <- as.factor(df$gender)
+head(df)
+```
+
+```{r}
+model <- lm(y ~ ., data=df)
+summary(model)
+plot(model)
+```
+
+## Weighted Regression to deal with non constant variance of errors
+```{r}
+#estimating the weights
+w <- predict(lm(abs(model$residuals) ~ df$veh_value + df$veh_age + df$age_cat + df$area + df$gender))
+
+# fitting the weighted regression model
+model_weight <- lm(y~., df, weights = 1/(w^2))
+summary(model_weight)
+plot(model_weight)
+```
+
+Notice the reduction in residual standard error. Not much difference in estimates
 
