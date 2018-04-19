@@ -102,7 +102,7 @@ names(p_value)<- name
 
 ```{r}
 plot(seq(10,100,10), adj_r2,type = "o", col = "blue") 
-title("Adjusted R2 vs % of rows of randomly sampled data")
+title("Adjusted R2 vs % of rows of randomly sampled and removed from data")
 ```
 ### P Values of coefficients after random sampling without replacecment
 ```{r}
@@ -113,7 +113,7 @@ pander(p_value)
 library(reshape2)
 d <- melt(p_value[])
 ggplot(d,aes(x = variable, y = value)) + 
-    geom_point()
+    geom_point()+ labs(y= "P- value", x = "Feature")
 ```
 
 
