@@ -2,84 +2,301 @@
 title: "project"
 author: "SARTHAK JAIN"
 date: "March 24, 2018"
-output: html_document
+output:
+  pdf_document:
+    keep_tex: yes
+  html_document:
+    df_print: paged
 ---
 
 
 ```{r}
-library(insuranceData)
-data(dataCar)
 library(dplyr)
-
-dataCar <- dataCar %>% filter(claimcst0 > 0.0)
-```
-
-```{r}
-summary(dataCar)
-m1 <- lm(log(claimcst0) ~ veh_value + veh_body + veh_age + gender + area + agecat, data=dataCar)
-summary(m1)
-```
-
-
-```{r}
-n <- 100000
-veh_value <- sample(10:100, n, replace=T)
-gender <- rbinom(n, 1, .5)
-veh_age <- sample(0:30, n, replace=T)
-age_cat <- sample(25:55, n, replace=T)
-area <- sample(0:2, n, replace=T)
-
-b0 <- 10
-b1 <- 5
-b2 <- 3.5
-b3 <- 2
-b4 <- 0.1
-
-bArea0 <- 1
-bArea1 <- 2
-bArea2 <- 3
-
-e <- rnorm(n, mean=0, sd=10.)
-y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
-
-df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
-df[, 'area'] <-  as.factor(df[, 'area'])
-df[, 'gender'] <- as.factor(df[, 'gender'])
-
-#add area as categorical and keep age as numeric
-```
-
-
-Standard Model
-==============
-```{r}
-model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=df)
-summary(model)
-plot(model)
 ```
 
 Correlated Predictors
 =====================
 ```{r}
-cond <- (df$veh_age > df$age_cat - 27) & (df$veh_age < df$age_cat - 23)
-df_filt <- df[cond, ]
-model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, df_filt)
-summary(model)
-plot(model)
-library(car)
-vif(model)
+library(MASS)
+library(reshape2)
+
+n = 500
+
+rhos = c(-0.99, -0.95, -0.9, -0.8, -0.6, 0.0, 0.6, 0.8, 0.9, 0.95, 0.99)
+k = length(rhos)
+coeff_vv <- data.frame(r=numeric(), v=numeric())
+coeff_va <- data.frame(r=numeric(), v=numeric())
+
+t_vv <- data.frame(r=numeric(), v=numeric())
+t_va <- data.frame(r=numeric(), v=numeric())
+
+r2 <- data.frame(r=numeric(), v=numeric())
+
+b0 <- 10
+b1 <- 1
+b2 <- 1
+b3 <- 1
+
+for(i in 1:length(rhos)) {
+  rho <- rhos[i]
+  corr <- matrix(c(1, rho, rho, 1), ncol=2)
+  stddev <- c(10, 10)
+  cov <- stddev %*% t(stddev) * corr
+  
+  cvv <- c()
+  cva <- c()
+  tvv <- c()
+  tva <- c()
+  rm <- c()
+  
+  for(s in 1:2000) {
+    age_cat <- rnorm(n=n, 30, 10)
+    
+    d <- mvrnorm(n=n, mu=c(30, 30), Sigma=cov)
+      
+    veh_value <- d[, 1]
+    veh_age <- d[, 2]
+    
+    e <- rnorm(n, mean=0, sd=10.)
+    y <- b0 + b1*veh_value + b2*veh_age + b3*age_cat + e
+    
+    df <- data.frame(y, veh_value, veh_age, age_cat)
+    
+    model <- lm(y ~ veh_value + veh_age + age_cat, data=df)
+    cvv <- c(cvv, model$coefficients[c("veh_value")])
+    cva <- c(cva, model$coefficients[c("veh_age")])
+    
+    summ <-summary(model)
+    tvv <- c(tvv, summ$coefficients[, 3][c("veh_value")])
+    tva <- c(tva, summ$coefficients[, 3][c("veh_age")])
+
+    rm <- c(rm, mean(model$residuals^2))
+  }
+  
+  coeff_va <- rbind(coeff_va, data.frame(r=rho, v=cva))
+  coeff_vv <- rbind(coeff_vv, data.frame(r=rho, v=cvv))
+  t_va <- rbind(t_va, data.frame(r=rho, v=tva))
+  t_vv <- rbind(t_vv, data.frame(r=rho, v=tvv))
+  r2 <- rbind(r2, data.frame(r=rho, v=rm))
+}
+```
+
+```{r}
+summary(aov(v ~ r, r2))
+
+bartlett.test(v ~ r, r2)
+
+p_val_r2 <- c()
+for(rho in rhos) {
+  p_val_r2 <- c(p_val_r2, t.test(r2[r2$r == rho, ]$v, r2[r2$r == 0.0, ]$v)$p.value)
+}
+print(p.adjust(p_val_r2))
+
+
+mod.dfcva <- aov(v ~ r, coeff_va)
+summary(mod.dfcva)
+
+bartlett.test(v ~ r, coeff_va)
+
+p_val_va <- c()
+for(rho in rhos) {
+  p_val_va <- c(p_val_va, t.test(coeff_va[coeff_va$r == rho, ]$v, coeff_va[coeff_va$r == 0.0, ]$v)$p.value)
+}
+print(p.adjust(p_val_va))
+
+mod.dfcvv <- aov(v ~ r, coeff_vv)
+summary(mod.dfcvv)
+
+bartlett.test(v ~ r, coeff_vv)
+
+p_val_vv <- c()
+for(rho in rhos) {
+  p_val_vv <- c(p_val_vv, t.test(coeff_vv[coeff_vv$r == rho, ]$v, coeff_vv[coeff_vv$r == 0.0, ]$v)$p.value)
+}
+print(p.adjust(p_val_vv))
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(coeff_vv, aes(x=factor(r), y=v)) + geom_boxplot() + labs(x="rho", y="beta_1")
+ggplot(coeff_va, aes(x=factor(r), y=v)) + geom_boxplot() + labs(x="rho", y="beta_2")
+ggplot(t_vv, aes(x=factor(r), y=v)) + geom_boxplot() + labs(x="rho", y="t(beta_1)")
+ggplot(t_va, aes(x=factor(r), y=v), xlab="rho", ylab="t(beta_2)") + geom_boxplot()+ labs(x="rho", y="t(beta_2)")
+ggplot(r2, aes(x=factor(r), y=v), xlab="rho", ylab="MSE") + geom_boxplot()+ labs(x="rho", y="MSE")
 ```
 
 
 
 
 
+Correlation due to higher order terms
+=====================================
+```{r}
+library(MASS)
+n = 500
+
+coeff_vv <- data.frame(r=numeric(), v=numeric())
+coeff_va <- data.frame(r=numeric(), v=numeric())
+
+r2 <- data.frame(r=numeric(), v=numeric())
+
+b1 <- 1
+b2 <- 1
+b3 <- 1
 
 
 
+for(s in 1:2000) {
+  age_cat <- rnorm(n=n, 30, 10)
+  veh_value <- rnorm(n=n, 30, 10)
+  veh_age <- rnorm(n=n, 30,10)
+  va2 <- veh_age^2
+  
+  e <- rnorm(n, mean=0, sd=10.)
+  y <- b0 + b1*veh_value + b2*veh_age + b3*age_cat + + e
+  
+  df <- data.frame(y, veh_value, veh_age, age_cat, va2)
+  
+  i <- 1
+  model <- lm(y ~ veh_value + veh_age + age_cat + va2, data=df)
+  summ <- summary(model)
+  coeff_vv <- rbind(coeff_vv, data.frame(r="With VA^2", v=summ$coefficients[, 1][c("va2")]))
+  coeff_va <- rbind(coeff_va, data.frame(r="With VA^2", v=summ$coefficients[, 1][c("veh_age")]))
+  
+  r2 <- rbind(r2, data.frame(r="With VA^2", v=mean(model$residuals^2)))
+  
+  i <- 2
+  model <- lm(y ~ veh_value + veh_age + age_cat, data=df)
+  summ <- summary(model)
+  coeff_va <- rbind(coeff_va, data.frame(r="Without VA^2", v=summ$coefficients[, 1][c("veh_age")]))
+  
+  r2 <- rbind(r2, data.frame(r="Without VA^2", v=mean(model$residuals^2)))
+  
+  # i <- 3
+  # model <- lm(y ~ veh_value + veh_age + age_cat + scale(va2), data=df)
+  # summ <-summary(model)
+  # coeff_vv <- rbind(coeff_vv, data.frame(r="With VA^2 scaled", v=summ$coefficients[, 1][c("scale(va2)")]))
+  # coeff_va <- rbind(coeff_va, data.frame(r="With VA^2 scaled", v=summ$coefficients[, 1][c("veh_age")]))
+  # 
+  # r2 <- rbind(r2, data.frame(r="With VA^2 scaled", v=mean(model$residuals^2)))
+}
+
+```
 
 
+```{r}
+library(ggplot2)
+ggplot(coeff_vv, aes(x=factor(r), y=v)) + geom_boxplot() + labs(x="Model", y="beta_4")
+ggplot(coeff_va, aes(x=factor(r), y=v)) + geom_boxplot()+ labs(x="Model", y="beta_2")
+ggsave("higher.pdf")
+ggplot(r2, aes(x=factor(r), y=v)) + geom_boxplot() + labs(x="Model", y="MSE")
+```
 
+```{r}
+library(reshape2)
+dfr2 <- setNames(melt(r2), c('r', 'c', 'v'))
+dfr2$c <- NULL
+dfr2[, 'r'] <- as.factor(dfr2[, 'r'])
+summary(aov(v ~ r, dfr2))
 
+bartlett.test(v ~ r, dfr2)
+pairwise.t.test(dfr2$v, dfr2$r, paired=F, pool.sd=F, p.adjust.method='bonferroni')
 
+dfcva <- setNames(melt(coeff_va), c('r', 'c', 'v'))
+dfcva$c <- NULL
+dfcva[, 'r'] <- as.factor(dfcva[, 'r'])
+mod.dfcva <- aov(v ~ r, dfcva)
+summary(mod.dfcva)
+plot(mod.dfcva)
 
+bartlett.test(v ~ r, dfcva)
+pairwise.t.test(dfcva$v, dfcva$r, paired=F, pool.sd=F, p.adjust.method='bonferroni')
+
+dfcvv <- setNames(melt(coeff_vv), c('r', 'c', 'v'))
+dfcvv$c <- NULL
+dfcvv[, 'r'] <- as.factor(dfcvv[, 'r'])
+mod.dfcvv <- aov(v ~ r, dfcvv)
+summary(mod.dfcvv)
+plot(mod.dfcvv)
+
+bartlett.test(v ~ r, dfcvv)
+
+```
+
+Model Selection
+===============
+
+```{r}
+library(MASS)
+
+rhos = c(0.0, 0.9, 0.99)
+b0 <- 10
+b1 <- 1
+b2 <- 0
+b3 <- 1
+
+coeff_vv <- data.frame(n=numeric(), r=numeric(), v=numeric())
+coeff_vv_s <- data.frame(n=numeric(), r=numeric(), v=numeric())
+
+models <- data.frame(n=numeric(), r=numeric(), v=numeric())
+
+for(j in c(20, 50)) {
+  for(i in 1:length(rhos)) {
+    n <- j
+    rho <- rhos[i]
+    corr <- matrix(c(1, rho, rho, 1), ncol=2)
+    stddev <- c(10, 10)
+    cov <- stddev %*% t(stddev) * corr
+    print(c(rho, n))
+    selected_coef <- c()
+    
+    se_vv <- c()
+    se_vv_s <- c()
+    
+    for(s in 1:10000) {
+          d <- mvrnorm(n=n, mu=c(30, 30), Sigma=cov)
+          
+          veh_value <- d[, 1]
+          veh_age <- d[, 2]
+          age_cat <- rnorm(n=n, mean=30, sd=10)
+          
+          e <- rnorm(n, mean=0, sd=10.)
+          y <- b0 + b1*veh_value + b2*veh_age + b3*age_cat + e
+          
+          df <- data.frame(y, veh_value, veh_age, age_cat)
+          
+          model <- lm(y ~ veh_value + age_cat, data=df)
+          
+          summ <-summary(model)
+          se_vv <- c(se_vv, summ$coefficients[, 3][c("veh_value")])
+
+          selected_model <- step(lm(y ~ veh_value + veh_age + age_cat, data=df), trace=0, scope=c(lower=~veh_value))
+          
+          if("veh_value" %in% names(selected_model$coefficients) & !("veh_age" %in% names(selected_model$coefficients))) {
+            se_vv_s <- c(se_vv_s, summary(selected_model)$coefficients[, 3][c("veh_value")])
+          }
+          
+          coef <- paste(names(selected_model$coefficients), collapse=' ')
+          selected_coef <- c(selected_coef, coef)
+    }
+     
+    coeff_vv <- rbind(coeff_vv, data.frame(n=n,r=rho,v=se_vv))
+    coeff_vv_s <- rbind(coeff_vv_s, data.frame(n=n, r=rho,v=se_vv_s))
+    models <- rbind(models, data.frame(n=n, r=rho, v=selected_coef))
+  }
+}
+```
+
+```{r}
+library(ggplot2)
+coeff_vv$t <- "true"
+coeff_vv_s$t <- "selected"
+comb_vv <- rbind(coeff_vv, coeff_vv_s)
+ggplot(comb_vv, aes(x=factor(r), y=v, fill=factor(t))) + geom_boxplot() + facet_wrap(~n)
+
+ggplot(models, aes(x=factor(r), y=factor(v))) + geom_count() + labs(x="rho", y="Model Selected") + facet_wrap(~factor(n))
+
+ggplot(comb_vv, aes(x=v, fill=factor(t))) + geom_density(alpha=0.2) + facet_grid(factor(r)~factor(n)) + labs(x="t-value", y="density")
+ggsave("inference.pdf")
+```
