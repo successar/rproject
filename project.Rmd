@@ -127,9 +127,6 @@ ggplot(r2, aes(x=factor(r), y=v), xlab="rho", ylab="MSE") + geom_boxplot()+ labs
 ```
 
 
-
-
-
 Correlation due to higher order terms
 =====================================
 ```{r}
@@ -172,14 +169,6 @@ for(s in 1:2000) {
   coeff_va <- rbind(coeff_va, data.frame(r="Without VA^2", v=summ$coefficients[, 1][c("veh_age")]))
   
   r2 <- rbind(r2, data.frame(r="Without VA^2", v=mean(model$residuals^2)))
-  
-  # i <- 3
-  # model <- lm(y ~ veh_value + veh_age + age_cat + scale(va2), data=df)
-  # summ <-summary(model)
-  # coeff_vv <- rbind(coeff_vv, data.frame(r="With VA^2 scaled", v=summ$coefficients[, 1][c("scale(va2)")]))
-  # coeff_va <- rbind(coeff_va, data.frame(r="With VA^2 scaled", v=summ$coefficients[, 1][c("veh_age")]))
-  # 
-  # r2 <- rbind(r2, data.frame(r="With VA^2 scaled", v=mean(model$residuals^2)))
 }
 
 ```
@@ -193,36 +182,6 @@ ggsave("higher.pdf")
 ggplot(r2, aes(x=factor(r), y=v)) + geom_boxplot() + labs(x="Model", y="MSE")
 ```
 
-```{r}
-library(reshape2)
-dfr2 <- setNames(melt(r2), c('r', 'c', 'v'))
-dfr2$c <- NULL
-dfr2[, 'r'] <- as.factor(dfr2[, 'r'])
-summary(aov(v ~ r, dfr2))
-
-bartlett.test(v ~ r, dfr2)
-pairwise.t.test(dfr2$v, dfr2$r, paired=F, pool.sd=F, p.adjust.method='bonferroni')
-
-dfcva <- setNames(melt(coeff_va), c('r', 'c', 'v'))
-dfcva$c <- NULL
-dfcva[, 'r'] <- as.factor(dfcva[, 'r'])
-mod.dfcva <- aov(v ~ r, dfcva)
-summary(mod.dfcva)
-plot(mod.dfcva)
-
-bartlett.test(v ~ r, dfcva)
-pairwise.t.test(dfcva$v, dfcva$r, paired=F, pool.sd=F, p.adjust.method='bonferroni')
-
-dfcvv <- setNames(melt(coeff_vv), c('r', 'c', 'v'))
-dfcvv$c <- NULL
-dfcvv[, 'r'] <- as.factor(dfcvv[, 'r'])
-mod.dfcvv <- aov(v ~ r, dfcvv)
-summary(mod.dfcvv)
-plot(mod.dfcvv)
-
-bartlett.test(v ~ r, dfcvv)
-
-```
 
 Model Selection
 ===============
@@ -300,3 +259,527 @@ ggplot(models, aes(x=factor(r), y=factor(v))) + geom_count() + labs(x="rho", y="
 ggplot(comb_vv, aes(x=v, fill=factor(t))) + geom_density(alpha=0.2) + facet_grid(factor(r)~factor(n)) + labs(x="t-value", y="density")
 ggsave("inference.pdf")
 ```
+
+Outlier and Non Normal Distribution
+===================================
+
+```{r}
+library(insuranceData)
+data(dataCar)
+library(dplyr)
+
+dataCar <- dataCar %>% filter(claimcst0 > 0.0)
+```
+
+```{r}
+summary(dataCar)
+m1 <- lm(log(claimcst0) ~ veh_value + veh_body + veh_age + gender + area + agecat, data=dataCar)
+summary(m1)
+```
+
+# Build Dataset
+```{r}
+set.seed(100)
+n <- 100
+veh_value <- sample(10:100, n, replace=T)
+hist(veh_value)
+
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 10
+b1 <- 5
+b2 <- 3.5
+b3 <- 2
+b4 <- 0.1
+
+bArea0 <- 1
+bArea1 <- 2
+bArea2 <- 3
+
+e <- rnorm(n, mean=0, sd=10)
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
+df[, 'area'] <-  as.factor(df[, 'area'])
+df[, 'gender'] <- as.factor(df[, 'gender'])
+
+#add area as categorical and keep age as numeric
+```
+
+
+Standard Model
+--------------
+```{r}
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=df)
+summary(model)
+plot(model)
+
+
+library(ggplot2)
+ggplot(df, aes(x=veh_value, y= y)) + 
+   geom_point(color='#2980B9', size = 2)+
+  stat_smooth(method=lm, color='red')
+
+# plot(df$y, df$veh_value)
+# 
+# plot(model2$fitted.values, df$veh_value)
+# plot(df$y, df$veh_value)
+# abline(lm(y ~ veh_value, data=df),col = "red",lwd=3.5,cex= 5)
+# 
+# library(ggplot2)
+# ggplot(df, aes(x=veh_value2, y= y)) + 
+#   geom_smooth(method=lm, color='red')
+# ?ggplot
+# 
+# ?geom_smooth()
+```
+
+Model with Outliers/Influential Observations
+--------------------------------------------
+```{r}
+df$veh_value2 <- df$veh_value
+df$y2 <- df$y
+df$y3 <- df$y
+
+df$veh_value2[df$veh_value > 94 & df$veh_value <= 95] <- 155
+df$veh_value2[df$veh_value > 95 & df$veh_value <= 97] <- 160
+df$veh_value2[df$veh_value > 97 & df$veh_value <= 99] <- 180
+df$veh_value2[df$veh_value > 99 & df$veh_value <= 100] <- 200
+#which(df$veh_value > 95 & df$veh_value <= 97)
+#df[c(34,63,74),]
+df$y2[63]<- 230
+
+model2 <- lm(y2 ~ veh_value2 + gender + veh_age + age_cat + area, data=df)
+summary(model2)
+plot(model2)
+
+plot(model2$fitted.values, df$veh_value2)
+
+boxplot(df$veh_value2)
+library(ggplot2)
+ggplot(df, aes(x=veh_value2, y= y2)) + 
+  geom_point(color='#2980B9', size = 2) + 
+  geom_smooth(method=lm, color='#2C3E50',se = TRUE)
+  
+
+plot(df$veh_value2,model2$residuals)
+
+```
+
+Model with Outliers but no Influential Observations
+---------------------------------------------------
+```{r}
+df$veh_value3 <- df$veh_value
+df$veh_value3[df$veh_value > 94 & df$veh_value <= 100] <- 180
+
+#which(df$veh_value > 94 & df$veh_value <= 100)
+df$y3[c(34,63,74,39,84)]
+#df$y[c(34)]<- 230
+df$y3[c(34,63)]<- 870
+df$y3[c(74,39,84)]<- 920
+
+model3 <- lm(y3 ~ veh_value3 + gender + veh_age + age_cat + area, data=df)
+summary(model3)
+plot(model3)
+
+plot(model3$fitted.values, df$veh_value3)
+
+boxplot(df$veh_value3)
+library(ggplot2)
+ggplot(df, aes(x=veh_value3, y= y3)) + 
+  geom_point(color='#2980B9', size = 4) + 
+  geom_smooth(method=lm, color='#2C3E50',se = TRUE)
+
+plot(df$veh_value3,model3$residuals)
+df$y3[c(74,39,84,34,63)]
+```
+
+
+Non-Normal Distribution 
+-----------------------
+
+```{r}
+set.seed(1113)
+n <- 10000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 10
+b1 <- 5
+b2 <- 3.5
+b3 <- 2
+b4 <- 0.1
+
+bArea0 <- 1
+bArea1 <- 2
+bArea2 <- 3
+
+#exp(1)
+
+#y <- rpois(n,10)
+e <- rnorm(n, mean=0, sd=10.)
+
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+#head(y)
+y <- y^2
+
+df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
+df[, 'area'] <-  as.factor(df[, 'area'])
+df[, 'gender'] <- as.factor(df[, 'gender'])
+
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=df)
+summary(model)
+plot(model)
+hist(model$residuals)
+hist(df$y, main = "Response Variable Y - Not normally distributed",xlab='Response Variable')
+```
+
+Square root transformation using box-cox
+----------------------------------------
+```{r}
+library(MASS)
+bc <- boxcox(y ~ veh_value + gender + veh_age + age_cat + area,data=df)
+
+(lambda <- bc$x[which.max(bc$y)])
+# 
+y_2 <- lm(y^0.5 ~ veh_value + gender + veh_age + age_cat + area, data=df)
+summary(y_2)
+plot(y_2)
+hist(y_2$residuals)
+
+
+(trans <- bc$x[which.max(bc$y)])
+#[1] 0.4242424
+# re-run with transformation
+mnew <- lm(((y^trans-1)/trans) ~  veh_value + gender + veh_age + age_cat + area, data=df)
+summary(mnew)
+plot(mnew)
+```
+
+Y(inverse) transformation
+---------------------------
+```{r}
+set.seed(1113)
+n <- 10000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 10
+b1 <- 5
+b2 <- 3.5
+b3 <- 2
+b4 <- 0.1
+
+bArea0 <- 1
+bArea1 <- 2
+bArea2 <- 3
+
+#exp(1)
+
+#y <- rpois(n,10)
+e <- rnorm(n, mean=0, sd=10.)
+
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+# head(y)
+# y[1]
+# log(exp(182.8027))
+
+y <- 1/y
+
+df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
+df[, 'area'] <-  as.factor(df[, 'area'])
+df[, 'gender'] <- as.factor(df[, 'gender'])
+
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=df)
+summary(model)
+plot(model)
+hist(model$residuals)
+```
+
+```{r}
+library(MASS)
+bc <- boxcox(y ~ veh_value + gender + veh_age + age_cat + area,data=df)
+
+(lambda <- bc$x[which.max(bc$y)])
+
+
+(trans <- bc$x[which.max(bc$y)])
+#[1] 0.4242424
+# re-run with transformation
+mnew <- lm(((y^trans-1)/trans) ~  veh_value + gender + veh_age + age_cat + area, data=df)
+summary(mnew)
+plot(mnew)
+```
+
+Effect of Missing Data and Non Constant Variance
+================================================
+
+```{r}
+library(pander)
+library(ggplot2)
+library(insuranceData)
+data(dataCar)
+library(dplyr)
+
+dataCar <- dataCar %>% filter(claimcst0 > 0.0)
+```
+
+
+```{r}
+summary(dataCar)
+m1 <- lm(log(claimcst0) ~ veh_value + veh_body + veh_age + gender + area + agecat, data=dataCar)
+summary(m1)
+```
+
+
+
+```{r}
+n <- 100000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 10
+b1 <- 5
+b2 <- 3.5
+b3 <- 2
+b4 <- 0.1
+
+bArea0 <- 1
+bArea1 <- 2
+bArea2 <- 3
+
+e <- rnorm(n, mean=0, sd=10.)
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+df <- data.frame(y, veh_value, gender, veh_age, age_cat, area)
+df[, 'area'] <-  as.factor(df[, 'area'])
+df[, 'gender'] <- as.factor(df[, 'gender'])
+
+#add area as categorical and keep age as numeric
+```
+
+
+
+Standard Model
+==============
+#checking  the structure of the data
+```{r}
+str(df)
+```
+
+
+#checking  the summary of the data
+```{r}
+summary(df)
+```
+
+
+```{r}
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=df)
+summary(model)
+plot(model)
+```
+```{r}
+sum <- summary(model)
+name <- row.names(sum$coefficients)
+name
+```
+
+# Effect of missing rows on Model Quality
+
+In this study we shall randomly remove without replacement `r seq(1,100,10) %`  of the rows from the data and
+observe the effect on p-values of the coefficients and adjusted $R^2$ 
+```{r}
+#remove x% of rows from the model
+p_value <- data.frame()
+adj_r2 <- c()
+for (i in seq(1,100,10)){
+model_rows_removed <- df[sample(nrow(df), size = (nrow(df)*(i/100)), replace = F),]
+print(nrow(model_rows_removed))
+model <- lm(y ~ veh_value + gender + veh_age + age_cat + area, data=model_rows_removed)
+sum <- summary(model)
+p_value <- rbind(p_value,sum$coefficients[,4])
+adj_r2 <- append(adj_r2,sum$adj.r.squared)
+#print(c(sum$adj.r.squared))
+}
+names(p_value)<- name
+```
+
+```{r}
+plot(seq(10,100,10), adj_r2,type = "o", col = "blue") 
+title("Adjusted R2 vs % of rows of randomly sampled and removed from data")
+```
+### P Values of coefficients after random sampling without replacecment
+```{r}
+pander(p_value)
+```
+
+```{r, warning=F, message= FALSE}
+library(reshape2)
+d <- melt(p_value[])
+ggplot(d,aes(x = variable, y = value)) + 
+    geom_point(pch = 16,cex = 5)+ labs(y= "P- value", x = "Feature")
+```
+
+
+
+# Effect of missing columns on Model Quality
+
+In this study we shall randomly remove one column at a time from the data and
+observe the effect on p-values of the coefficients and adjusted $R^2$ 
+
+```{r}
+#remove x% of rows from the model
+col_p_value <- data.frame()
+col_adj_r2 <- c()
+for (i in 2:ncol(df)){
+model_col_removed <- df[,-c(i)]
+model <- lm(y ~ ., data=model_col_removed)
+sum <- summary(model)
+assign(paste("col_p_value",i,sep= "_"),sum$coefficients[,4])
+col_adj_r2 <- append(col_adj_r2,sum$adj.r.squared)
+#print(c(sum$adj.r.squared))
+}
+```
+
+```{r}
+plot(col_adj_r2, xaxt = "n",cex = 2,pch = 16)
+axis(1, at=1:5, labels=names(df[,2:6]))
+title("Effect of removing a predictor from data")
+```
+
+
+
+# Effect of Systematic Errors on Model Quality/Fit
+
+# Simulating the data to test the effect
+```{r}
+set.seed(121)
+n <- 100000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 5
+b1 <- 2
+b2 <- 6
+b3 <- 7
+b4 <- 9
+
+bArea0 <- 300
+bArea1 <- 220
+bArea2 <- 315
+
+e <- rnorm(n, mean=0, sd=10.)
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2) + e
+
+df_age <- data.frame(veh_value,veh_age, age_cat)
+#df_age <- as.data.frame(scale(df_age))
+df_age['y'] <- y  
+df_age['area'] <-  area
+df_age$area <- as.factor(df_age$area)
+df_age['gender'] <- gender
+df_age$gender <- as.factor(df_age$gender)
+head(df_age)
+```
+Taking each coefficient to be equal in the above simulated data.
+
+### Linear Model using simulated data
+```{r}
+model <- lm(y ~ ., data=df_age)
+summary(model)
+```
+
+
+## Removing Age Category < 40 
+
+### Distribution of Age Category
+```{r}
+df_age %>%
+  ggplot(aes(gender,age_cat)) + geom_boxplot()
+```
+
+
+```{r}
+df_age_2 <- df_age[df_age$age_cat > 35 & df_age$age_cat< 45,] # selecting rows
+model <- lm(y ~ ., data=df_age_2)
+summary(model)
+```
+
+
+## effect of non constant variance
+
+Simulating data with non constant variance
+```{r}
+set.seed(121)
+n <- 100000
+veh_value <- sample(10:100, n, replace=T)
+gender <- rbinom(n, 1, .5)
+veh_age <- sample(0:30, n, replace=T)
+age_cat <- sample(25:55, n, replace=T)
+area <- sample(0:2, n, replace=T)
+
+b0 <- 5
+b1 <- 2
+b2 <- 6
+b3 <- 7
+b4 <- 9
+
+bArea0 <- 300
+bArea1 <- 220
+bArea2 <- 315
+
+y <- b0 + b1*veh_value + b2*gender + b3*veh_age + b4*age_cat + bArea0 * (area == 0) + bArea1 * (area == 1) + bArea2 * (area == 2)
+
+e <- c()
+for(i in 1:n){
+e <- append(e, rnorm(1, mean=0, sd= y[i]))
+}
+
+Y <- y + e
+
+df <- data.frame(veh_value,veh_age, age_cat)
+#df_age <- as.data.frame(scale(df_age))
+df['y'] <- Y  
+df['area'] <-  area
+df$area <- as.factor(df$area)
+df['gender'] <- gender
+df$gender <- as.factor(df$gender)
+head(df)
+```
+
+```{r}
+model <- lm(y ~ ., data=df)
+summary(model)
+plot(model)
+```
+
+## Weighted Regression to deal with non constant variance of errors
+
+```{r}
+#estimating the weights
+w <- predict(lm(abs(model$residuals) ~ veh_value + gender + veh_age + age_cat+ 1*(area==0) + 1*(area==1) + 1*(area==2) ))
+
+# fitting the weighted regression model
+model_weight <- lm(y~., df, weights = 1/(w^2))
+summary(model_weight)
+plot(model_weight)
+```
+
+Notice the reduction in residual standard error. Not much difference in estimates
